@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DatePicker } from '@/components/ui/date-picker';
+import { fetchWithAuth } from '@/lib/api'; // <-- 1. IMPORT THE WRAPPER
 
 // Define types for our dynamic dropdown data
 interface SelectOption {
@@ -84,7 +85,7 @@ export default function UploadForm({ mineId, onUploadSuccess }: UploadFormProps)
       setStatus('Saving document details...');
 
       // 2. Save the metadata to our backend API
-      const metadataResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/`, {
+      const metadataResponse = await fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/documents/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

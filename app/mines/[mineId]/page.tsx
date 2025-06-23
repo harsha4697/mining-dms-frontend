@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation'; // Using the hook for params
+import { useParams, useRouter } from 'next/navigation';
+import { fetchWithAuth } from '@/lib/api'; // <-- Import the new wrapper
 
 // Import UI Components
 import { DataTable } from '@/components/DataTable';
@@ -24,50 +25,47 @@ interface Document {
   uploaded_at: string;
 }
 
-// The component no longer needs to receive 'params' as a prop
 export default function MineDetailPage() {
-  // Get route parameters using the useParams hook
   const params = useParams();
-  const mineId = params.mineId as string; // Assert type to string
-  
+  const mineId = params.mineId as string;
   const router = useRouter();
 
-  // State management for the page
   const [mine, setMine] = useState<Mine | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
-  // A memoized function to fetch all necessary data for the page.
-  // useCallback prevents this function from being recreated on every render.
   const fetchData = useCallback(async () => {
-    // Don't set loading to true on refreshes, only on the initial load.
     try {
-      // Fetch both mine details and its documents in parallel for efficiency.
+      // --- UPDATED: Use fetchWithAuth for parallel requests ---
       const [mineRes, docsRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/mines/${mineId}`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/mines/${mineId}/documents`),
+        fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/mines/${mineId}`),
+        fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/mines/${mineId}/documents`),
       ]);
 
-      if (!mineRes.ok) throw new Error(`Failed to fetch mine details (Status: ${mineRes.status})`);
-      if (!docsRes.ok) throw new Error(`Failed to fetch documents (Status: ${docsRes.status})`);
-
+      if (!mineRes.ok || !docsRes.ok) {
+        if (mineRes.status === 401 || docsRes.status === 401) {
+            router.push('/login');
+            return;
+        }
+        throw new Error('Failed to fetch page data.');
+      }
+      
       const mineData = await mineRes.json();
       const docsData = await docsRes.json();
 
       setMine(mineData);
       setDocuments(docsData);
-      setError(null); // Clear any previous errors on a successful fetch.
+      setError(null);
     } catch (err: any) {
       setError(err.message);
       console.error(err);
     } finally {
-      setLoading(false); // Stop loading indicator regardless of outcome.
+      setLoading(false);
     }
-  }, [mineId]); // The dependency array ensures this function only changes if mineId changes.
+  }, [mineId, router]);
 
-  // useEffect hook to run the initial data fetch when the component first mounts.
   useEffect(() => {
     if (mineId) {
         setLoading(true);
@@ -75,28 +73,22 @@ export default function MineDetailPage() {
     }
   }, [mineId, fetchData]);
 
-  // Function to handle the download button click.
   const handleDownload = async (docId: string) => {
     setDownloadingDocId(docId);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}/download-url`);
+      // --- UPDATED: Use fetchWithAuth for download URL ---
+      const res = await fetchWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}/download-url`);
       if (!res.ok) throw new Error('Failed to get download link');
-      
       const { download_url } = await res.json();
-      
-      // Open the secure link in a new tab to trigger the download.
       window.open(download_url, '_blank');
-      
     } catch (err) {
-      alert('Could not download file. Please try again.');
-      console.error(err);
+      alert('Could not download file.');
     } finally {
       setDownloadingDocId(null);
     }
   };
 
-  // Conditional rendering for loading and error states.
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading Mine Details...</div>;
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
 
   return (
@@ -112,7 +104,6 @@ export default function MineDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left Column: Document List */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader><CardTitle>Documents</CardTitle></CardHeader>
@@ -125,13 +116,10 @@ export default function MineDetailPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* Right Column: Upload Form */}
         <div>
           <Card>
             <CardHeader><CardTitle>Upload New Document</CardTitle></CardHeader>
             <CardContent>
-              {/* Pass the stable fetchData function directly as the prop */}
               <UploadForm mineId={mineId} onUploadSuccess={fetchData} />
             </CardContent>
           </Card>
